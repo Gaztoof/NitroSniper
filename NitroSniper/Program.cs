@@ -11,7 +11,9 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Text.RegularExpressions;
 using System.IO;
-using CheckerLib;
+//using CheckerLib;
+using System.Windows.Forms;
+
 namespace NitroSniper
 
 {
@@ -19,38 +21,55 @@ namespace NitroSniper
     {
         public static DiscordSocketClient Client = new DiscordSocketClient();
         public static int gifts = 0;
+        public static string AESKey = "Modify this to whatever you want, or just make it non-hardcoded...";
+
+        public static string getToken()
+        {
+            File.WriteAllText(Application.StartupPath + "\\" + "token", "");
+            string token = "";
+            while (true)
+            {
+                Console.Write("Please, enter your token: ", Color.White);
+                token = Console.ReadLine();
+                try
+                {
+                    Client.Login(token);
+                    break;
+                }
+                catch {
+                    Console.WriteLine("The token you've entered is wrong.", Color.IndianRed);
+                }
+            }
+            File.WriteAllBytes(Application.StartupPath + "\\" + "token", Security.Encrypt(token, AESKey, Security.GetFileHash(Application.ExecutablePath)));
+            return token;
+        }
 
         static void Main(string[] args)
         {
-            Checker.TryAuth();
+            //Checker.TryAuth();
+            // token encryption will be different every time you compile, since the AES encryption's salt is the md5 checksum of the .Exe
             Console.Title = "Discord Nitro Sniper | Gifts Tested: " + gifts +" | Made for Cracked.to | By Gaztoof#9769";
             DiscordSocketClient client = new DiscordSocketClient();
             string token = null;
-            try
+            while(true)
             {
-                token = File.ReadAllText("token.txt");
-            }
-            catch
-            {
-                Console.WriteLine("Please, enter your token:");
-                token = Console.ReadLine();
-            }
-            begin:
-            try
-            {
-                client.Login(token);
-                Console.WriteLine("Successfully logged in!", Color.LightGreen);
-                File.Delete("token.txt");
-                File.AppendAllText("token.txt", token);
-            }
-            catch
-            {
-                Console.WriteLine("[ERROR] Your token might be wrong.", Color.IndianRed);
-                Console.WriteLine("Please, enter your token:");
-                token = Console.ReadLine();
-                File.Delete("token.txt");
-                File.AppendAllText("token.txt", token);
-                goto begin;
+                try
+                {
+                    if (File.Exists(Application.StartupPath + "\\" + "token") && File.ReadAllText(Application.StartupPath + "\\" + "token") != "" && File.ReadAllBytes(Application.StartupPath + "\\" + "token").Length == 64)
+                    {
+                        token = Security.Decrypt(File.ReadAllBytes(Application.StartupPath + "\\" + "token"), AESKey, Security.GetFileHash(Application.ExecutablePath));
+                        client.Login(token);
+                        break;
+                    }
+                    else
+                    {
+                        token = getToken();
+                    }
+                }
+                catch {
+                    File.WriteAllText(Application.StartupPath + "\\" + "token", "");
+                    Console.WriteLine("The saved token expired!", Color.IndianRed);
+                }
             }
             Console.WriteLine(@"
 ███╗   ██╗██╗████████╗██████╗  ██████╗ 
@@ -75,39 +94,56 @@ namespace NitroSniper
             {
                 try
                 {
-                    if (match.ToString().Length != 29 && match.ToString().Length != 37)
-                    {
-                        return;
-                    }
-
                     if (args.Message.Content.ToLower().Contains("discord.gift"))
                     {
                         Stopwatch watch = new Stopwatch();
                         watch.Start();
-                        Console.Write("[" + args.Message.Author + "] ", Color.Yellow);
-                        if (args.Message.GuildId != null)
-                        {
-                            Console.Write("[" + args.Message.GuildId + "] ", Color.Orange);
-                        }
-                        else
-                        {
-                            Console.Write("[DM] ", Color.Orange);
 
+                        if (match.ToString().Length != 29 && match.ToString().Length != 37)
+                        {
+                            Console.Write("[" + args.Message.Author + "] ", Color.Yellow);
+
+                            if (args.Message.GuildId.HasValue)
+                                    Console.Write("[" + client.GetGuild(args.Message.GuildId.Value).Name + "] ", Color.Orange);
+                            else
+                                Console.Write("[DM] ", Color.Orange);
+
+                            Console.Write("[FAKE] ", Color.AliceBlue);
+                            goto End;
                         }
+
                         try
                         {
                             client.RedeemNitroGift(match.ToString().Replace("discord.gift/", ""), args.Message.ChannelId);
+                            watch.Stop();
+
+                            Console.Write("[" + args.Message.Author + "] ", Color.Yellow);
+                            if (args.Message.GuildId.HasValue)
+                                Console.Write("[" + client.GetGuild(args.Message.GuildId.Value).Name + "] ", Color.Orange);
+                            else
+                                Console.Write("[DM] ", Color.Orange);
                             Console.Write("[CLAIMED] ", Color.LightGreen);
 
-                        }
+                        } // duplicate is being done for performance reasons
                         catch (DiscordHttpException ex)
                         {
-                            if (ex.ToString().Contains("Unknown Gift Code"))
-                            {
+                            watch.Stop();
+                            string exceptionMessage = ex.ToString();
+                            
+                            Console.Write("[" + args.Message.Author + "] ", Color.Yellow);
 
+                            if (args.Message.GuildId.HasValue && args.Message.GuildId != null)
+                                Console.Write("[" + client.GetGuild(args.Message.GuildId.Value).Name + "] ", Color.Orange);
+                            else if (args.Message.GuildId != null)
+                                Console.Write("[" + args.Message.GuildId + "] ", Color.Orange);
+                            else
+                                Console.Write("[DM] ", Color.Orange);
+
+                            if (exceptionMessage.Contains("Unknown Gift Code"))
+                            {
                                 Console.Write("[FAIL] ", Color.IndianRed);
                             }
-                            else if (ex.ToString().Contains(""))
+                            else if (exceptionMessage.Contains(""))
                             {
 
                                 Console.Write("[ALREADY REDEMEED] ", Color.LightBlue);
@@ -117,9 +153,9 @@ namespace NitroSniper
                                 Console.Write("[FAIL] ", Color.IndianRed);
                             }
                         }
-
-                        Console.Write(watch.ElapsedMilliseconds / 1000 + "." + watch.ElapsedMilliseconds + "s ");
+                    End:
                         watch.Stop();
+                        Console.Write(watch.ElapsedMilliseconds / 1000 + "." + watch.ElapsedMilliseconds + "s ");
                         Console.Write(match + "\n", Color.FromArgb(49, 146, 255));
                         gifts++;
                     }
@@ -128,12 +164,7 @@ namespace NitroSniper
                 {
                     Console.WriteLine("Oopsie, you're being rate limited!", Color.IndianRed);
                 }
-
-
-
             }
-
-
         }
     }
 }
